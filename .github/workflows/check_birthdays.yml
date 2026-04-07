@@ -1,0 +1,35 @@
+name: Vérification quotidienne des anniversaires
+
+on:
+  # Exécution automatique chaque matin à 7h UTC = 8h heure de Bruxelles (heure d'hiver)
+  # En heure d'été (CEST = UTC+2), le cron tourne à 9h locale.
+  # Ajustez à "0 6 * * *" pour 8h en heure d'été.
+  schedule:
+    - cron: "0 7 * * *"
+
+  # Déclenchement manuel depuis l'onglet Actions sur GitHub (pour tester)
+  workflow_dispatch:
+
+jobs:
+  check-birthdays:
+    name: Vérifier et envoyer les rappels d'anniversaire
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Configurer Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Vérifier les anniversaires et envoyer les emails
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: python scripts/check_birthdays.py
