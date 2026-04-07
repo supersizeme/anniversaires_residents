@@ -1,12 +1,12 @@
 """
 Script de vérification des anniversaires des résidents.
 Lit la base de données Notion, vérifie si c'est l'anniversaire d'un résident aujourd'hui,
-et envoie un email de rappel via l'API Resend.
+et envoie un email de rappel via l'API Brevo (anciennement Sendinblue).
 
 Variables d'environnement requises (GitHub Secrets):
-  RESEND_API_KEY      : Clé API Resend (ex: re_xxxxxxxxxx)
-  NOTION_TOKEN        : Token d'intégration Notion (ex: secret_xxxxxxxxxx)
-  NOTION_DATABASE_ID  : ID de la base de données Notion (ex: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+  BREVO_API_KEY       : Clé API Brevo (ex: xkeysib-xxxxxxxxxx)
+  NOTION_TOKEN        : Token d'intégration Notion (ex: ntn_xxxxxxxxxx)
+  NOTION_DATABASE_ID  : ID de la base de données Notion (ex: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
 """
 
 import os
@@ -17,12 +17,12 @@ from datetime import date, datetime
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-RESEND_API_KEY     = os.environ.get("RESEND_API_KEY", "")
+BREVO_API_KEY      = os.environ.get("BREVO_API_KEY", "")
 NOTION_TOKEN       = os.environ.get("NOTION_TOKEN", "")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "")
 
 RECIPIENT_EMAIL    = "xavier.doutrelepont@croix-rouge.be"
-SENDER_EMAIL       = "anniversaires@resend.dev"   # Domaine sandbox Resend (gratuit, sans config DNS)
+SENDER_EMAIL       = "xavier.doutrelepont@croix-rouge.be"   # Adresse vérifiée sur Brevo
 SENDER_NAME        = "Rappel Anniversaires Résidents"
 
 NOTION_API_VERSION = "2022-06-28"
@@ -163,7 +163,7 @@ def build_email_text(residents, today):
 
 
 def send_birthday_email(residents, today):
-    """Envoie l'email de rappel via l'API Resend."""
+    """Envoie l'email de rappel via l'API Brevo."""
     if len(residents) == 1:
         subject = f"🎂 Anniversaire de {residents[0]['prenom']} {residents[0]['nom']} aujourd'hui !"
     else:
@@ -171,17 +171,17 @@ def send_birthday_email(residents, today):
         subject = f"🎂 Anniversaires aujourd'hui : {prenoms}"
 
     payload = {
-        "from": f"{SENDER_NAME} <{SENDER_EMAIL}>",
-        "to": [RECIPIENT_EMAIL],
+        "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
+        "to": [{"email": RECIPIENT_EMAIL}],
         "subject": subject,
-        "html": build_email_html(residents, today),
-        "text": build_email_text(residents, today),
+        "htmlContent": build_email_html(residents, today),
+        "textContent": build_email_text(residents, today),
     }
 
     response = requests.post(
-        "https://api.resend.com/emails",
+        "https://api.brevo.com/v3/smtp/email",
         headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "api-key": BREVO_API_KEY,
             "Content-Type": "application/json",
         },
         json=payload,
@@ -189,7 +189,7 @@ def send_birthday_email(residents, today):
     )
 
     if response.status_code in (200, 201):
-        print(f"Email envoyé avec succès à {RECIPIENT_EMAIL} (id: {response.json().get('id')})")
+        print(f"Email envoyé avec succès à {RECIPIENT_EMAIL} (id: {response.json().get('messageId')})")
     else:
         print(f"Erreur envoi email ({response.status_code}): {response.text}")
         sys.exit(1)
@@ -202,7 +202,7 @@ def main():
     print(f"Vérification des anniversaires pour le {today.strftime('%d/%m/%Y')}...")
 
     # Validation des variables d'environnement
-    missing = [v for v in ["RESEND_API_KEY", "NOTION_TOKEN", "NOTION_DATABASE_ID"] if not os.environ.get(v)]
+    missing = [v for v in ["BREVO_API_KEY", "NOTION_TOKEN", "NOTION_DATABASE_ID"] if not os.environ.get(v)]
     if missing:
         print(f"Erreur : variables d'environnement manquantes : {', '.join(missing)}")
         sys.exit(1)
