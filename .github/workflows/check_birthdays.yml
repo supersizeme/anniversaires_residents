@@ -14,6 +14,8 @@ jobs:
   check-birthdays:
     name: Vérifier et envoyer les rappels d'anniversaire
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Récupérer le code
