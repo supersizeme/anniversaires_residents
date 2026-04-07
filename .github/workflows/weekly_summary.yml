@@ -1,0 +1,36 @@
+name: Résumé hebdomadaire des anniversaires
+
+on:
+  # Chaque lundi à 7h UTC = 8h heure de Bruxelles (heure d'hiver)
+  schedule:
+    - cron: "0 7 * * 1"
+
+  # Déclenchement manuel pour tester
+  workflow_dispatch:
+
+jobs:
+  weekly-summary:
+    name: Envoyer le résumé des anniversaires de la semaine
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Configurer Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Envoyer le résumé hebdomadaire
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          WEEKLY_SUMMARY: "true"
+        run: python scripts/check_birthdays.py

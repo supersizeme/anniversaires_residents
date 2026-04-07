@@ -104,6 +104,38 @@ def find_birthday_residents(residents, today=None):
     return birthday_residents
 
 
+def find_upcoming_birthdays(residents, today=None, days=7):
+    """Retourne les résidents dont l'anniversaire tombe dans les 'days' prochains jours."""
+    if today is None:
+        today = date.today()
+
+    upcoming = []
+    for r in residents:
+        dn = r["date_naissance"]
+        # Date anniversaire cette année
+        try:
+            birthday_this_year = dn.replace(year=today.year)
+        except ValueError:
+            # 29 février en année non bissextile
+            birthday_this_year = dn.replace(year=today.year, day=28)
+
+        # Si déjà passé cette année, regarder l'année prochaine
+        if birthday_this_year < today:
+            try:
+                birthday_this_year = dn.replace(year=today.year + 1)
+            except ValueError:
+                birthday_this_year = dn.replace(year=today.year + 1, day=28)
+
+        delta = (birthday_this_year - today).days
+        if 0 <= delta < days:
+            age = birthday_this_year.year - dn.year
+            upcoming.append({**r, "age": age, "date_anniversaire": birthday_this_year, "dans_jours": delta})
+
+    # Trier par ordre chronologique
+    upcoming.sort(key=lambda x: x["date_anniversaire"])
+    return upcoming
+
+
 # ── Email ──────────────────────────────────────────────────────────────────────
 
 def build_email_html(residents, today):
@@ -162,6 +194,94 @@ def build_email_text(residents, today):
     )
 
 
+def build_weekly_html(upcoming, today):
+    """Construit le HTML du résumé hebdomadaire."""
+    week_end = today + __import__('datetime').timedelta(days=6)
+    periode = f"du {today.strftime('%d/%m/%Y')} au {week_end.strftime('%d/%m/%Y')}"
+
+    if not upcoming:
+        contenu = "<p>Aucun anniversaire cette semaine. Bonne semaine !</p>"
+    else:
+        lignes = ""
+        for r in upcoming:
+            jour_label = "Aujourd'hui" if r["dans_jours"] == 0 else (
+                "Demain" if r["dans_jours"] == 1 else r["date_anniversaire"].strftime("%A %d/%m").capitalize()
+            )
+            lignes += (
+                f"<tr>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #eee'><strong>{r['prenom']} {r['nom']}</strong></td>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #eee'>{r['date_anniversaire'].strftime('%d/%m/%Y')}</td>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #eee'>{r['age']} ans</td>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #eee;color:#E52020'>{jour_label}</td>"
+                f"</tr>"
+            )
+        contenu = f"""
+        <table style='width:100%;border-collapse:collapse;font-size:14px'>
+          <thead>
+            <tr style='background:#f5f5f5'>
+              <th style='padding:8px 12px;text-align:left'>Résident(e)</th>
+              <th style='padding:8px 12px;text-align:left'>Date</th>
+              <th style='padding:8px 12px;text-align:left'>Âge</th>
+              <th style='padding:8px 12px;text-align:left'>Quand</th>
+            </tr>
+          </thead>
+          <tbody>{lignes}</tbody>
+        </table>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+  <style>
+    body {{ font-family: Arial, sans-serif; color: #222; background: #f9f9f9; padding: 20px; }}
+    .card {{ background: #fff; border-radius: 8px; padding: 30px 40px; max-width: 600px; margin: auto;
+             border-top: 5px solid #E52020; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
+    h1 {{ color: #E52020; font-size: 22px; margin-top: 0; }}
+    .footer {{ font-size: 12px; color: #888; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px; }}
+  </style>
+</head>
+<body><div class="card">
+  <h1>📅 Anniversaires de la semaine</h1>
+  <p style="color:#666">{periode}</p>
+  {contenu}
+  <div class="footer">Ce message est envoyé automatiquement chaque lundi.<br>Croix-Rouge de Belgique</div>
+</div></body></html>"""
+
+
+def send_weekly_email(upcoming, today):
+    """Envoie le résumé hebdomadaire via l'API Resend."""
+    week_end = today + __import__('datetime').timedelta(days=6)
+    subject = f"📅 Anniversaires du {today.strftime('%d/%m')} au {week_end.strftime('%d/%m/%Y')}"
+
+    if upcoming:
+        noms = ", ".join(f"{r['prenom']} {r['nom']}" for r in upcoming)
+        text_body = f"Anniversaires cette semaine :\n" + "\n".join(
+            f"- {r['prenom']} {r['nom']} : {r['date_anniversaire'].strftime('%d/%m/%Y')} ({r['age']} ans)"
+            for r in upcoming
+        )
+    else:
+        text_body = "Aucun anniversaire cette semaine."
+
+    payload = {
+        "from": f"{SENDER_NAME} <{SENDER_EMAIL}>",
+        "to": [RECIPIENT_EMAIL],
+        "subject": subject,
+        "html": build_weekly_html(upcoming, today),
+        "text": text_body,
+    }
+
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=30,
+    )
+
+    if response.status_code in (200, 201):
+        print(f"Résumé hebdomadaire envoyé à {RECIPIENT_EMAIL} (id: {response.json().get('id')})")
+    else:
+        print(f"Erreur envoi email ({response.status_code}): {response.text}")
+        sys.exit(1)
+
+
 def send_birthday_email(residents, today):
     """Envoie l'email de rappel via l'API Resend."""
     if len(residents) == 1:
@@ -199,7 +319,10 @@ def send_birthday_email(residents, today):
 
 def main():
     today = date.today()
-    print(f"Vérification des anniversaires pour le {today.strftime('%d/%m/%Y')}...")
+    weekly_mode = os.environ.get("WEEKLY_SUMMARY", "").lower() == "true"
+
+    print(f"Mode : {'résumé hebdomadaire' if weekly_mode else 'vérification quotidienne'}")
+    print(f"Date : {today.strftime('%d/%m/%Y')}")
 
     # Validation des variables d'environnement
     missing = [v for v in ["RESEND_API_KEY", "NOTION_TOKEN", "NOTION_DATABASE_ID"] if not os.environ.get(v)]
@@ -211,19 +334,21 @@ def main():
     residents = get_residents_from_notion()
     print(f"{len(residents)} résident(s) trouvé(s) dans Notion.")
 
-    # Recherche des anniversaires du jour
-    birthday_residents = find_birthday_residents(residents, today)
-
-    if not birthday_residents:
-        print("Aucun anniversaire aujourd'hui. Aucun email envoyé.")
-        return
-
-    print(f"{len(birthday_residents)} anniversaire(s) aujourd'hui :")
-    for r in birthday_residents:
-        print(f"  - {r['prenom']} {r['nom']} ({r['age']} ans)")
-
-    # Envoi de l'email
-    send_birthday_email(birthday_residents, today)
+    if weekly_mode:
+        upcoming = find_upcoming_birthdays(residents, today, days=7)
+        print(f"{len(upcoming)} anniversaire(s) dans les 7 prochains jours.")
+        for r in upcoming:
+            print(f"  - {r['prenom']} {r['nom']} : {r['date_anniversaire'].strftime('%d/%m/%Y')} ({r['age']} ans)")
+        send_weekly_email(upcoming, today)
+    else:
+        birthday_residents = find_birthday_residents(residents, today)
+        if not birthday_residents:
+            print("Aucun anniversaire aujourd'hui. Aucun email envoyé.")
+            return
+        print(f"{len(birthday_residents)} anniversaire(s) aujourd'hui :")
+        for r in birthday_residents:
+            print(f"  - {r['prenom']} {r['nom']} ({r['age']} ans)")
+        send_birthday_email(birthday_residents, today)
 
 
 if __name__ == "__main__":
