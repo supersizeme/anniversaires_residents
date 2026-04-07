@@ -1,0 +1,32 @@
+name: Rappels procédures & RDV résidents
+
+on:
+  schedule:
+    - cron: "0 7 * * *"   # 8h heure de Bruxelles (heure d'hiver)
+  workflow_dispatch:
+
+jobs:
+  check-procedures:
+    name: Envoyer les rappels J-1 et J+1
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Configurer Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Envoyer les rappels de procédure
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PROCEDURES_DB_ID: ${{ secrets.NOTION_PROCEDURES_DB_ID }}
+        run: python scripts/check_procedures.py
