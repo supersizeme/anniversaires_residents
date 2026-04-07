@@ -68,10 +68,10 @@ def get_residents_from_notion():
             nom_list = props.get("Nom", {}).get("rich_text", [])
             nom = nom_list[0]["plain_text"] if nom_list else ""
 
-            # Date de naissance (Date)
-            date_prop = props.get("Date de naissance", {}).get("date")
+            # Date de l'anniversaire (Date)
+            date_prop = props.get("Date de l'anniversaire", {}).get("date")
             if not date_prop or not date_prop.get("start"):
-                continue  # Ignorer les résidents sans date de naissance
+                continue  # Ignorer les résidents sans date d'anniversaire
 
             date_naissance_str = date_prop["start"]  # Format: YYYY-MM-DD
 
